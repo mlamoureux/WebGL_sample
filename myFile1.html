@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html><head id="Barebones">
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <script src="GPGPUtility.js"></script>
+        <script src="WaveEqn.js"></script>
+        <script src="WavePlot.js"></script>
+        <title>WebGLwave example for CREWES</title>
+        </head>
+        <body>
+        <div class="content">
+            <h1>WebGLwave example for CREWES</h1>
+
+
+            <figure class="center" id="results">
+                <figcaption>
+                    You should see a waveform traveling here. 
+                </figcaption>
+            </figure>
+        </div>
+
+        <br class="clear" />
+        <script>
+            "use strict";
+
+            /** The canvas onto which we render the wave function & potential */
+            var canvas;
+            var dt;
+            var gl;
+            var gpgpUtility;
+            /** A two element array containing wave functions for t - deltat and t. */
+            var initialWaveFunctions;
+            var nframes;
+            var nsteps;
+            var parent;
+            var renderer;
+            var vel;
+            var w;
+            var waveengine;
+            var waveFunctionData, waveFunctionTexture0, waveFunctionTexture1, waveFunctionTexture2;
+            var x0;
+            var y0;
+            var xLength;
+            var xResolution;
+            var yLength;
+            var yResolution;
+
+            parent = document.getElementById("results")
+
+            xLength = 4000.0; // in meters
+            yLength = 4000.0; // in meters
+            vel = 1000.0; // velocity in m/s
+            x0 = .25*xLength; // location and width of initial Gaussian
+            y0 = .75*yLength;
+            w = 0.05*xLength; // width of the initial Gaussian
+
+            // number of sample points (x-dir y-dir)
+            xResolution = 1000; 
+            yResolution = 1000; 
+            // sample interval in time
+            dt = .001; // seconds
+            // Number of frames to compute and animate
+            nframes = 600;
+            // Number of delta t timesteps per frams
+            nsteps = 5;
+
+            gpgpUtility = new vizit.utility.GPGPUtility(xResolution, yResolution, {premultipliedAlpha: false});
+            gpgpUtility.setProblemSize(xResolution, yResolution);
+
+            canvas = gpgpUtility.getCanvas();
+            canvas.style.height = yResolution + "px";
+            parent.insertBefore(canvas, parent.firstChild);
+
+            function gaussWaveform(waveform,xRez,yRez,xLen,yLen) {
+                for (var j = 0; j < yRez; ++j) {
+                    for (var i = 0; i < xRez; ++i) {
+                        var x = xLen*(i/xRez) - x0;
+                        var y = yLen*(j/yRez) - y0;
+                        waveform[4*(i + j*xRez)] = 
+                            10.0*Math.exp(-(x*x + y*y)/(w*w))*Math.cos(x/50 - y/50);
+                        waveform[4*(i + j*xRez) + 1] = 
+                            (j > yRez/2) ? 1.0 : 0.1;
+                    }
+                }
+                return waveform;
+            }
+            // we stuff velocity^2 info into the green channel;
+            function velField(waveform,xRez,yRez) {
+                for (var j = 0; j < yRez; ++j) {
+                    for (var i = 0; i < xRez; ++i) {
+                        waveform[4*(i + j*xRez) + 1] = 
+                            (j > yRez/2) ? vel*vel : .25*vel*vel;
+                    }
+                }
+                return waveform;
+            }
+
+            /**
+             * Run the simulation for n time steps, then show the results.
+             */
+            function nextFrame() {
+                for (var i = 0; i < nsteps; ++i) {
+                    waveengine.timestep();
+                }
+
+                renderer.show(waveengine.getRenderedTexture());
+
+                if (nframes--) {
+                    requestAnimationFrame(nextFrame);
+                }
+            }
+
+            waveFunctionData = new Float32Array(4 * xResolution * yResolution);
+            waveFunctionData = gaussWaveform(waveFunctionData,xResolution,yResolution,xLength,yLength);
+            waveFunctionData = velField(waveFunctionData,xResolution,yResolution);
+
+            waveFunctionTexture0 = gpgpUtility.makeTexture(WebGLRenderingContext.FLOAT, waveFunctionData);
+            waveFunctionTexture1 = gpgpUtility.makeTexture(WebGLRenderingContext.FLOAT, waveFunctionData);
+            waveFunctionTexture2 = gpgpUtility.makeTexture(WebGLRenderingContext.FLOAT, waveFunctionData);
+
+
+            waveengine = new WaveEngine(gpgpUtility, xResolution, yResolution, xLength, yLength, dt);
+            renderer = new WaveResults(gpgpUtility, parent, xResolution, yResolution);
+
+            waveengine.setInitialTextures(waveFunctionTexture0, waveFunctionTexture1, waveFunctionTexture2);
+
+            renderer.show(waveengine.getRenderedTexture());
+
+/*****************
+ *  Assorted timing information. Don't need to run this.
+    var startGPU = window.performance.now();
+    var result = waveengine.timestep();
+    var endGPU = window.performance.now();
+    var gpuTime = endGPU - startGPU;
+    console.log(`GPU - one step: ${gpuTime}ms`);
+    // do it again, in a loop
+    startGPU = window.performance.now();
+         for (var i = 0; i < 100; ++i) {
+             result = waveengine.timestep();
+        }
+    endGPU = window.performance.now();
+    gpuTime = endGPU - startGPU;
+    console.log(`GPU - 100 steps: ${gpuTime}ms`);
+    console.log(`endGPU: ${endGPU}ms`);
+    console.log(`startGPU: ${startGPU}ms`);
+****************/
+
+            requestAnimationFrame(nextFrame);
+    </script>
+</html>
